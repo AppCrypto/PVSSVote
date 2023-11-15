@@ -3,15 +3,15 @@ w3 = Web3(Web3.HTTPProvider('http://127.0.0.1:7545'))
 from solcx import compile_standard,install_solc
 install_solc("0.8.0")
 import time
-import json #to save the output in a JSON file
+import json  #to save the output in a JSON file
 import time
-import pvss
+import pvss  #Cryptographic primitive library 
 
 
 
 global pk,sk,n,t
-n=10    #tally_people
-t=5
+n=10    #tally_people /Registered Tallier
+t=5     #The voting system need tallier to recover secret
 
 
 with open("/home/ozr/IncentiveVote/contracts/IncentiveVote.sol", "r") as file:
@@ -55,80 +55,89 @@ print("合约已部署，地址：", contract_address)
 
 Contract = w3.eth.contract(address=contract_address, abi=abi)
 
-#key=pvss.keygen()
 
 
 key=pvss.keygen()
-pk=key["pk"]
-sk=key["sk"]
+pk=key["pk"]  #Public key array
+sk=key["sk"]  #Private key array
 pk1=[0]
 pk2=[0]
 pk1.extend(int(pk[i][0]) for i in range(1,n+1))
 pk2.extend(int(pk[i][1]) for i in range(1,n+1)) 
-
+#PVSS Key Generation
 #pvss setup
-"""
-accounts9 = w3.eth.accounts[9]
-Contract.functions.new_vote("test",accounts0,30000000000000000000,3).transact({'from': accounts0,'value': 30000000000000000000})
-
-for i in range(1,4):
-    
-    accounts = w3.eth.accounts[i]
-    Contract.functions.deposit(accounts0).transact({'from': accounts, 'value': 3000000000000000000})
-    Contract.functions.record(accounts0,1).transact({'from': accounts})
-
-for i in range(6,9):
-
-    accounts = w3.eth.accounts[i]
-    Contract.functions.votesuccess(accounts0).transact({'from': accounts})
 
 
-#print(Contract.functions.show(accounts0).transact({'from': accounts0}))
 
-Contract.functions.success_distribute(accounts0).transact({'from': accounts0})
-"""
+def TallierRegister(begin,end):
+    for i in range(begin,end+1):
+        #Tallier deposit assets for register
+        Contract.functions.deposit(accounts0).transact({'from': w3.eth.accounts[i], 'value': 300000000000000000}) #deposit_fee is 1/10 vote_fee
+    print("All tallier register Success")
 
-def IncentiveVote():
-    Contract.functions.new_vote("test",accounts0,30000000000000000000,3).transact({'from': w3.eth.accounts[0],'value': 30000000000000000000})
-    #new vote distribute by accounts0 
-    #pvss.setup
-    #tally people choose  
-    for i in range(1,4):
-        Contract.functions.deposit(accounts0).transact({'from': w3.eth.accounts[i], 'value': 3000000000000000000}) #deposit_fee is 1/10 vote_fee
-        #Contract.functions.record(accounts0,1).transact({'from': accounts})
 
-    #vote begin       4~8 vote
-    share1=pvss.PvssVote(pvss.random_scalar(),1)
-    test1=pvss.dateconvert(share1)
-    Contract.functions.Dealer_verify_link(test1["v1"],test1["v2"],test1["c1"],test1["c2"],pk1,pk2).call({"from":w3.eth.accounts[4]})
-    Contract.functions.votesuccess(accounts0).transact({'from': w3.eth.accounts[4]})
-    print("NO."+str(4)+"  address : "+str(w3.eth.accounts[4])+"  VoteDone")
-    for i in range(5,8):
-        share=pvss.PvssVote(pvss.random_scalar(),2)
-        test1=pvss.dateconvert(share1)
+def VoterCastVote(begin,end):
+   
+    share1=pvss.PvssVote(pvss.random_scalar(),1)   #The first voter cast his vote   his vote value is 1 ,is changeable
+    test1=pvss.dateconvert(share1)    #Data conversion for bilinear pairing on-chain
+    Contract.functions.Dealer_verify_link(test1["v1"],test1["v2"],test1["c1"],test1["c2"],pk1,pk2).call({"from":w3.eth.accounts[begin]})
+    #Voter invoke PVSS.Verify to the vote for n tallier  
+    Contract.functions.votesuccess(accounts0).transact({'from': w3.eth.accounts[begin]})
+    #When PVSS.Verify done, we invoke votesuccess and put this account address into  votetask
+    print("NO."+str(begin)+"  address : "+str(w3.eth.accounts[begin])+"  VoteDone")
+    for i in range(begin+1,end+1):
+        share=pvss.PvssVote(pvss.random_scalar(),2) #The second voter cast his vote, his vote value is 2 , changeable
+        test1=pvss.dateconvert(share1)  #Data conversion for bilinear pairing on-chain
         Contract.functions.Dealer_verify_link(test1["v1"],test1["v2"],test1["c1"],test1["c2"],pk1,pk2).call({"from":w3.eth.accounts[i]})
         Contract.functions.votesuccess(accounts0).transact({'from': w3.eth.accounts[i]})
-        for j in range(1,n+1):
-            share1["c"][j]=pvss.add(share1["c"][j],share["c"][j])
-            share1["v"][j]=pvss.add(share1["v"][j],share["v"][j])
-        share1["U"]=pvss.add(share1["U"],share["U"])
+        for j in range(1,n+1):   #Share accumulation for (v,c,u) of each vote, Shares are accumulate to share1,which is the first vote share
+            share1["c"][j]=pvss.add(share1["c"][j],share["c"][j]) #accumulate c
+            share1["v"][j]=pvss.add(share1["v"][j],share["v"][j]) #accumulate v
+        share1["U"]=pvss.add(share1["U"],share["U"]) #accumulate U
         print("NO."+str(i)+"  address : "+str(w3.eth.accounts[i])+"  VoteDone")
-    
+    return share1  #return all voter accumulated Shares 
 
-    all_votescore=[]
-    dataacc=pvss.dateconvert(share1)
-    for i in range(1,4):
+def TallierShareAndRecon(begin,end,acc):
+    all_votescore=[] #Stores the vote result generated by all the talliers
+    dataacc=pvss.dateconvert(acc) #Data conversion for bilinear pairing on-chain
+    for i in range(begin,end+1):
         Contract.functions.Node_verify_link(dataacc["v1"],dataacc["v2"],dataacc["s1"],dataacc["s2"]).call({"from":w3.eth.accounts[i]})
-        votescore = Contract.functions.VoteTally(dataacc["s1"],dataacc["s2"], pvss.recover_secret4(share1["raw"]),int(share1["U"][0]),int(share1["U"][1])).call({"from":w3.eth.accounts[i]})
+        #Verification for accumulated Share. In order to ensure the correctness of the voting result.
+        votescore = Contract.functions.VoteTally(dataacc["s1"],dataacc["s2"], pvss.recover_secret4(acc["raw"]),int(acc["U"][0]),int(acc["U"][1])).call({"from":w3.eth.accounts[i]})
+        #PVSS.Reconstruction  (on-chain) to recover the result
         all_votescore.extend([votescore])
+        #The result stored in it 
         Contract.functions.record(accounts0,1).transact({'from': w3.eth.accounts[i]})
-
-    #tally_result check
-    database=pvss.VoteDatabase(n)
+        #Tallier finish his work and record to the smart contract
+    print("Tallier all verify and Recon done") 
+    database=pvss.VoteDatabase(100)   #Pre-processing : Produce all voting results in advance
     for i in range(0,n+1):
-        if (str(all_votescore[0])==str(database[i])):
-            print("result : "+str(i)+"  votes")
-    Contract.functions.success_distribute(accounts0).transact({'from': accounts0})
+        if (str(all_votescore[0])==str(database[i])):   # Compare the result with the pre-processed result and find the same value 
+            print("result : "+str(i)+"  votes")  
+
+
+def IncentiveVote():
+    
+    Contract.functions.new_vote("test",accounts0,3000000000000000000,3).transact({'from': w3.eth.accounts[0],'value': 3000000000000000000})
+    print("The vote had published")
+    # New vote distribute by accounts0 
+    # The interval (begin,end) represents the account selection
+    # Like (1,5) represents account 1,2,3,4,5
+    TallierRegister(1,9)    
+    # The 1~5 accounts register to become tallier       
+ 
+    # Vote begin   
+    acc=VoterCastVote(10,30) 
+    # The 6~10 accounts register to become Voter and begin to vote
+    # The return vale is accumulate Shares dictionary
+    
+    TallierShareAndRecon(1,9,acc)    
+    # Tallier (1,5) verifies the accumulated shares and recovers the voting results
+       
+    
+    Contract.functions.success_distribute(accounts0).transact({'from': w3.eth.accounts[0]})
+    #When result is public, invoke Incentive mechanism to distribute Digital assets
+    print("The vote task finished")
 
 print("vote begin.............................")
 IncentiveVote()
