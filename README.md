@@ -34,13 +34,13 @@ TallierShareAndRecon(1,9,acc)
    激励发放后，完成本次投票任务。
 
 其中，TallierRegister为唱票者注册函数
-      ```java  
+```java  
 def TallierRegister(begin,end):
       for i in range(begin,end+1):
           #Tallier deposit assets for register
           Contract.functions.deposit(accounts0).transact({'from': w3.eth.accounts[i], 'value': 300000000000000000}) #deposit_fee is 1/10 vote_fee
     print("All tallier register Success")
-   ```
+```
 
 代码具体请参考
 
