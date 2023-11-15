@@ -280,28 +280,8 @@ contract IncentiveVote
 	    return uint256(keccak256(abi.encodePacked(pubkey[0], pubkey[1], kG.X, kG.Y, message)));
 	}
 	
-	function VerifySchnorrProof( uint256[2] memory pubkey, uint256 message, uint256 s, uint256 e )
-	    public payable
-	    returns (bool)
-	{
-	    return e == CalcProof(pubkey, message, s, e);
-	}
 
-	function VerifyRingSig( uint256[] memory pubkeys, uint256[] memory tees, uint256 seed, uint256 message )
-		public payable
-		returns (bool)
-	{
-		require( pubkeys.length % 2 == 0 );
-		require( pubkeys.length > 0 );
-		uint256 c = seed;
-		uint256 nkeys = pubkeys.length / 2;
-		for( uint256 i = 0; i < nkeys; i++ ) {
-			uint256 j = i * 2;
-			c = CalcProof([pubkeys[j], pubkeys[j+1]], message, tees[i], c);
-		}
-		return c == seed;
-	}
-
+	//Bilinear pairing verification for distribute shares array (PVSS.Verify) ,  e(pki,vi)=e(ci, g1) , The array include all distribute shares
 	function Dealer_verify_link(  
 		uint256[2][] memory v1, uint256[2][]  memory v2, 
 		uint256[] memory  c1 , uint256[] memory c2 , 
@@ -310,36 +290,19 @@ contract IncentiveVote
 	public payable 
 	returns (bool)
     {   
-        //G1Point[] memory g1points = new G1Point[](2);
-		//G2Point[] memory g2points = new G2Point[](2);
-		//uint256 p = 21888242871839275222246405745257275088696311157297823662689037894645226208583;
 		uint elements=pk1.length;
 		
 		for(uint i=1;i<=elements-1;i++) //11=error
 		{
-			//g1points[0].Y=pk2[i];
-			//g1points[0].X=pk1[i];
-	
-			//g1points[1].X = c1[i];
-			//g1points[1].Y = c2[i];
-			//g2points[0].X = v1[i];
-			//g2points[0].Y = v2[i];
-			//g2points[1] = P2();
-	 		//g1points[1].Y = p - g1points[1].Y;
-			if (!Dealer_verify(v1[i],v2[i],c1[i],c2[i],pk1[i],pk2[i]))
+			if (!Dealer_verify(v1[i],v2[i],c1[i],c2[i],pk1[i],pk2[i])) //single bilinear pairing for (i)th distribute share
 			{
 				return false;
 			}		
 		}       
 		return true;
     }      
-		//g2points[0] = Pairing.P2();
-		//return Pairing.pairing(g1points, g2points);    
-		//g1points[0] =Pairing.G1Point(2105622854737956278960820189003209265030159610422294829533538413616148751220, 4693421376345711501553695544689816857537595793687540587541589533286349676261);
-		//g1points[1] =Pairing.G1Point(2105622854737956278960820189003209265030159610422294829533538413616148751220, 4693421376345711501553695544689816857537595793687540587541589533286349676261);		
-		//g2points[1] = Pairing.P2();		
 		
-
+	//Bilinear pairing verification for distribute shares (PVSS.Verify) ,  e(pki,vi)=e(ci, g1)
 	function Dealer_verify(
 		uint256[2] memory v1, uint256[2]  memory v2, 
 		uint256  c1 , uint256  c2, 
@@ -366,6 +329,7 @@ contract IncentiveVote
 		return true;		
     }
 
+	//Bilinear pairing verification for decrypted share   ,e(g2,si)=e(vi,g1)
 	function Node_verify(
 		uint256[2] memory v1,uint256[2] memory v2,
 		uint s1,uint s2
@@ -389,7 +353,7 @@ contract IncentiveVote
 		}
 		return true;	
 	}
-
+	//Bilinear pairing verification for decrypted share array  ,e(g2,si)=e(vi,g1),  The array include all decrypted shares
 	function Node_verify_link(
 		uint256[2][] memory v1, uint256[2][]  memory v2,
 		uint256[] memory s1,uint256[] memory s2
@@ -397,10 +361,10 @@ contract IncentiveVote
 	public payable
 	returns (bool)
 	{
-		uint elements=s1.length;
+		uint elements=s1.length;//to get the array length 
 		for(uint i=1;i<=elements-1;i++)
 		{
-			if(!Node_verify(v1[i],v2[i],s1[i],s2[i]))
+			if(!Node_verify(v1[i],v2[i],s1[i],s2[i])) //single bilinear pairing for (i)th decrypted share
 			{
 				return false;
 			}
@@ -408,9 +372,9 @@ contract IncentiveVote
 		return true;
 	}
 
-	
+	//PVSS.Reconstruction (on-chain) 
 	function Secret_recover( 
-		uint256  share, 
+		uint256  share,  //g^si
 		uint256  lagrange_coefficient)  
 	public payable 
 	returns (G1Point memory r)
@@ -419,27 +383,31 @@ contract IncentiveVote
 		G1Point memory xG = g1mul(P1(), share % N());
 		G1Point memory yG = g1mul(xG,lagrange_coefficient);
 
-		return  yG;
+		return  yG;  //recover g^s
 	}
 
-	function VoteAccumula(
+	//PVSS.Reconstruction (on-chain) and compute vote result  (ver.1)
+	function VoteAccumula(  
 		uint256[] memory share, 
 		uint256[] memory lagrange_coefficient
 	)
 	public payable
 	returns (G1Point memory r)
 	{
-		G1Point memory acc = P1();
+		G1Point memory acc = P1();// acc=g1
 		uint elements = share.length;
 		for(uint i=1;i <= elements-1;i++)
 		{
 			
-			acc = g1add(acc,Secret_recover(share[i],lagrange_coefficient[i]));
+			acc = g1add(acc,Secret_recover(share[i],lagrange_coefficient[i])); //compute g^(s1+s2+...s_k),k is number of vote 
 		}
 		
-		return g1add(acc,g1neg(P1()));
+		return g1add(acc,g1neg(P1()));//return g^((s1+s2+...s_k+1)-1),   k is number of vote 
 	}
 
+	//PVSS.Reconstruction (on-chain) and compute vote result  (ver.2)
+	//c1,c2 is x,y of decrypted cumulative shares array
+	//lagrange_coefficient is lagrange_coefficient array for recover 
 	function VoteTally(
 		uint256[] memory  c1 , uint256[] memory c2 , uint256[] memory lagrange_coefficient,uint u1,uint u2
 	)
@@ -447,21 +415,21 @@ contract IncentiveVote
 	returns (G1Point memory )
 	{	
 		G1Point memory g1u;
-		g1u.X=u1;
-		g1u.Y=u2;
+		g1u.X=u1; //u1 is x of cumulative U 
+		g1u.Y=u2; //u1 is y of cumulative U 
 		G1Point memory g1points;
-		G1Point memory acc=P1();
-		uint elements = lagrange_coefficient.length;
+		G1Point memory acc=P1(); //acc=g
+		uint elements = lagrange_coefficient.length;  //get array length
 		for(uint i=1;i<=elements-1;i++)
 		{
 			g1points.X = c1[i];
 			g1points.Y = c2[i];
 			
-			acc=g1add(acc,g1mul(g1points,lagrange_coefficient[i]));
+			acc=g1add(acc,g1mul(g1points,lagrange_coefficient[i])); //compute g^(s1+s2+...s_length),length is number of vote 
 		}
-		acc=g1add(acc,g1neg(P1()));
-		acc=g1add(g1u,g1neg(acc));
-		return acc;
+		acc=g1add(acc,g1neg(P1()));//the above acc is g^(s1+s2+...s_length)*g, so we need to g^(s1+s2+...s_length)*g/g to compute g^(s1,s2,...)
+		acc=g1add(g1u,g1neg(acc)); //lastly, we compute vote by g^(s1+s2+...+v1+v2+...)/g^(s1+s2+...) get g^(v1+v2+...)
+		return acc;    //return the vote result :g^(v1+v2+...)
 	}
 
     struct Votetask{
@@ -475,7 +443,8 @@ contract IncentiveVote
         address[] deposit_people;//质押资金的账号
     }
 
-    mapping (address => Votetask) public Votetasks;
+    mapping (address => Votetask) public Votetasks; // The initiator address is mapped to the voting task
+	//The initiator begin a votetask invoke new_vote function
     function new_vote(string memory vote,address Task_publisher,uint256 Vote_fee, uint256 n) public payable
     {
         require(msg.value==Vote_fee);
@@ -487,43 +456,53 @@ contract IncentiveVote
     }
     function deposit(address Task_publisher) public payable 
     {
+		//If tallier deposit Success,then we put the tallier address into deposit_people
         require(msg.value==(Votetasks[Task_publisher].Vote_fee)/10);
         Votetasks[Task_publisher].deposit_people.push(msg.sender);
     }
 
     function votesuccess(address Task_publisher) public{
         Votetasks[Task_publisher].vote_people.push(msg.sender);
+		//If the vote is successful, the voter address is put in vote_people
     }
 
     function record(address Task_publisher, int8 verify) external
     {
         require(block.timestamp <= Votetasks[Task_publisher].tasktime + 10 minutes, "Vote time exceeded");
+		//It is necessary to complete the accumulation of shares and upload them within the specified time
          if (verify ==  1) {
-            
+			//When the share accumulation is complete, the player is added to the array tally_people
             Votetasks[Task_publisher].tally_people.push(msg.sender);
         }
     }
 
 
     function success_distribute(address Task_publisher) public {
+		//When the result of the vote comes out, the task is completed
+		//We will reward each address in the vote_people array with an equal share of the Digital assets
         for (uint i = 0; i < Votetasks[Task_publisher].vote_people.length; i++)
         {
             address payable recipient = payable( Votetasks[Task_publisher].vote_people[i]);
             uint amount=(Votetasks[Task_publisher].Vote_fee/5)/(Votetasks[Task_publisher].vote_people.length);
             recipient.transfer(amount);
         }
-        
+        //We will reward each address in the tally_people array with an equal share of the Digital assets
+		//We also will return  deposited Digital assets of tally_poeple
         for (uint i = 0; i < Votetasks[Task_publisher].tally_people.length; i++)
         {
             address payable recipient2 = payable(Votetasks[Task_publisher].tally_people[i]);
-            uint amount=(((Votetasks[Task_publisher].Vote_fee/5)*4/Votetasks[Task_publisher].vote_people.length)+(Votetasks[Task_publisher].Vote_fee/10));
+            uint amount=(((Votetasks[Task_publisher].Vote_fee/5)*4/(Votetasks[Task_publisher].tally_people.length))+(Votetasks[Task_publisher].Vote_fee/10));
             recipient2.transfer(amount);
         }
+		
     }
+
+	//function failed_distribute()
 
     function show(address Task_publisher) public 
         returns (address[] memory ,address[] memory ,address[] memory)
     {
+		//Look at the array of all the addresses of the task at this point
         return ( Votetasks[Task_publisher].vote_people,  Votetasks[Task_publisher].tally_people, Votetasks[Task_publisher].deposit_people);
     }
 }
