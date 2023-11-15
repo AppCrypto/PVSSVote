@@ -124,11 +124,11 @@ def IncentiveVote():
     # The interval (begin,end) represents the account selection
     # Like (1,5) represents account 1,2,3,4,5
     TallierRegister(1,9)    
-    # The 1~5 accounts register to become tallier       
+    # The 1~9 accounts register to become tallier       
  
     # Vote begin   
     acc=VoterCastVote(10,30) 
-    # The 6~10 accounts register to become Voter and begin to vote
+    # The 10~30 accounts register to become Voter and begin to vote
     # The return vale is accumulate Shares dictionary
     
     TallierShareAndRecon(1,9,acc)    
