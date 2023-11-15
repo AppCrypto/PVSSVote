@@ -34,9 +34,13 @@ TallierShareAndRecon(1,9,acc)
    激励发放后，完成本次投票任务。
 
 代码具体请参考
+
 智能合约代码：IncentiveVote.sol
+
 PVSS密码原语：pvss.py
+
 附带激励机制的完整电子投票：Incentive_pvss_vote.py
+
 代码部分已全部注释。
 
 ## 数据测试
