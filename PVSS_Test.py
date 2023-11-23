@@ -5,16 +5,16 @@ install_solc("0.8.0")
 import time
 import json  #to save the output in a JSON file
 import time
-import pvss  #Cryptographic primitive library 
+import pvssfortest  #Cryptographic primitive library 
+import sys  
 
 
+global pk,sk,nn,tt
+nn=10    #tally_people /Registered Tallier
+tt=5     #The voting system need tallier to recover secret
 
-global pk,sk,n,t
-n=10    #tally_people /Registered Tallier
-t=5     #The voting system need tallier to recover secret
 
-
-with open("/home/ozr/IncentiveVote/contracts/IncentiveVote.sol", "r") as file:
+with open("contracts/IncentiveVote.sol", "r") as file:
     contact_list_file = file.read()
 
 compiled_sol = compile_standard(
@@ -57,86 +57,157 @@ Contract = w3.eth.contract(address=contract_address, abi=abi)
 
 
 
-key=pvss.keygen()
+key=pvssfortest.keygen(100)
 pk=key["pk"]  #Public key array
 sk=key["sk"]  #Private key array
 pk1=[0]
 pk2=[0]
-pk1.extend(int(pk[i][0]) for i in range(1,n+1))
-pk2.extend(int(pk[i][1]) for i in range(1,n+1)) 
+pk1.extend(int(pk[i][0]) for i in range(1,101))
+pk2.extend(int(pk[i][1]) for i in range(1,101)) 
 #PVSS Key Generation
 #pvss setup
 
 
 
+def verifygastest(n):
+    key=pvssfortest.keygen(n)
+    pk=key["pk"]  #Public key array
+    sk=key["sk"]  #Private key array
+    pk11=[0]
+    pk22=[0]
+    pk11.extend(int(pk[i][0]) for i in range(1,n+1))
+    pk22.extend(int(pk[i][1]) for i in range(1,n+1)) 
+    #PVSS Key Generation
+    Share1=pvssfortest.PvssVote(pvssfortest.random_scalar(),2,n,int(n/2))
+    test1=pvssfortest.dateconvert(Share1,n)    #Data conversion for bilinear pairing on-chain
+    #Test different talliers, gas cost of voter_verify
+    #Contract.functions.Dealer_verify_link(test1["v1"],test1["v2"],test1["c1"],test1["c2"],pk11,pk22).call({"from":w3.eth.accounts[0]})
+    gas_estimate1=Contract.functions.Dealer_verify_link(test1["v1"],test1["v2"],test1["c1"],test1["c2"],pk11,pk22).estimateGas()
+    gas_estimate2=Contract.functions.Node_verify_link(test1["v1"],test1["v2"],test1["s1"],test1["s2"]).estimateGas()
+    print("{",n,",",int(n/2),"}"," Voter_verify gas cost :  " ,gas_estimate1,"   Tallier_verify gas cost :  ",gas_estimate2)
+    #Test different talliers, gas cost of tallier_verify
+
+def Accumulatetest(times,n):
+
+    share=pvssfortest.PvssVote(pvssfortest.random_scalar(),2,n,int(n/2))
+    share1=pvssfortest.PvssVote(pvssfortest.random_scalar(),2,n,int(n/2))
+    starttime=time.time() #time test
+    for i in range(times):  #accumulate time
+        for j in range(1,n+1):   #Share accumulation for (v,c,u) of each vote, Shares are accumulate to share1,which is the first vote share
+            share1["c"][j]=pvssfortest.add(share1["c"][j],share["c"][j]) #accumulate c
+            share1["v"][j]=pvssfortest.add(share1["v"][j],share["v"][j]) #accumulate v
+        share1["U"]=pvssfortest.add(share1["U"],share["U"]) #accumulate U
+    print("Accumulate ",times,"times  cost: ",time.time()- starttime)  #time test
+
+
+def ReconGasTest(n):
+
+    acc=pvssfortest.PvssVote(pvssfortest.random_scalar(),2,n,int(n/2))
+    dataacc=pvssfortest.dateconvert(acc,n)   
+    gas_estimate=votescore = Contract.functions.VoteTally(dataacc["s1"],dataacc["s2"], pvssfortest.recover_secret4(acc["raw"]),int(acc["U"][0]),int(acc["U"][1])).estimateGas()
+    print(n," VoteTally gas cost :   " ,gas_estimate)
+
+
+def VoterTimeTest(n):
+    key=pvssfortest.keygen(n)
+    pk=key["pk"]  #Public key array
+    sk=key["sk"]  #Private key array
+    pk11=[0]
+    pk22=[0]
+    pk11.extend(int(pk[i][0]) for i in range(1,n+1))
+    pk22.extend(int(pk[i][1]) for i in range(1,n+1)) 
+    starttime=time.time()
+    acc=pvssfortest.PvssVote(pvssfortest.random_scalar(),2,n,int(n/2))
+    t1=time.time()- starttime
+
+    test1=pvssfortest.dateconvert(acc,n)    
+    starttime2=time.time()
+    Contract.functions.Dealer_verify_link(test1["v1"],test1["v2"],test1["c1"],test1["c2"],pk11,pk22).call({"from":w3.eth.accounts[0]})
+    t2=time.time()- starttime
+    print("In",n,"Tallier ","Every Voter PVSS.Share() time cost: ",t1," PVSS.Verify() time cost: ",t2," The voter finish vote all time cost: ",(t1+t2)) 
+
 #First Test 
 #vote Share Size
 def Test1():
-    Share=pvss.PvssVote(pvss.random_scalar(),1)
-    print(Share)
-    print(".............................v(size)................................")
-    print(Share['v'])
-    print(".............................c(size)................................")
-    print(Share['c'])
-    print(".............................U(size)................................")
-    print(Share['U'])
-
+    print("..............................................Test1 begin..................................................................")
+    Share=pvssfortest.PvssVote(pvssfortest.random_scalar(),1,2,1)
+    print("The size of the {2,1}  V: "+str(len(str(Share['v'])))+"  bytes, C: "+str(len(str(Share['c'])))+"  bytes, U: "+str(len(str(Share['U'])))+" bytes")
+    Share=pvssfortest.PvssVote(pvssfortest.random_scalar(),1,4,2)
+    print("The size of the {4,2}  V: "+str(len(str(Share['v'])))+" bytes, C: "+str(len(str(Share['c'])))+"  bytes, U: "+str(len(str(Share['U'])))+" bytes")
+    Share=pvssfortest.PvssVote(pvssfortest.random_scalar(),1,6,3)
+    print("The size of the {6,3}  V: "+str(len(str(Share['v'])))+" bytes, C: "+str(len(str(Share['c'])))+"  bytes, U: "+str(len(str(Share['U'])))+" bytes")
+    Share=pvssfortest.PvssVote(pvssfortest.random_scalar(),1,8,4)
+    print("The size of the {8,4}  V: "+str(len(str(Share['v'])))+" bytes, C: "+str(len(str(Share['c'])))+" bytes, U: "+str(len(str(Share['U'])))+" bytes")
+    Share=pvssfortest.PvssVote(pvssfortest.random_scalar(),1,10,5)
+    print("The size of the {10,5} V: "+str(len(str(Share['v'])))+" bytes, C: "+str(len(str(Share['c'])))+" bytes, U: "+str(len(str(Share['U'])))+" bytes")
+    Share=pvssfortest.PvssVote(pvssfortest.random_scalar(),1,12,6)
+    print("The size of the {12,6} V: "+str(len(str(Share['v'])))+" bytes, C: "+str(len(str(Share['c'])))+" bytes, U: "+str(len(str(Share['U'])))+" bytes")
+    Share=pvssfortest.PvssVote(pvssfortest.random_scalar(),1,14,7)
+    print("The size of the {14,7} V: "+str(len(str(Share['v'])))+" bytes, C: "+str(len(str(Share['c'])))+" bytes, U: "+str(len(str(Share['U'])))+" bytes")
+    Share=pvssfortest.PvssVote(pvssfortest.random_scalar(),1,16,8)
+    print("The size of the {16,8} V: "+str(len(str(Share['v'])))+" bytes, C: "+str(len(str(Share['c'])))+" bytes, U: "+str(len(str(Share['U'])))+" bytes")
+    print("..............................................Test1 end..................................................................")
+    #vote size of different tallier
+    
 #Second Test 
 #Gas cost of both bilinear pairing
 def Test2():
-    Share1=pvss.PvssVote(pvss.random_scalar(),2)
-    test1=pvss.dateconvert(Share1)    #Data conversion for bilinear pairing on-chain
-    #Test different talliers, gas cost of voter_verify
-    gas_estimate1=Contract.functions.Dealer_verify_link(test1["v1"],test1["v2"],test1["c1"],test1["c2"],pk1,pk2).estimateGas()
-    print("Voter_verify gas cost :   " ,gas_estimate1)
-    #Test different talliers, gas cost of tallier_verify
-    gas_estimate2=Contract.functions.Node_verify_link(test1["v1"],test1["v2"],test1["s1"],test1["s2"]).estimateGas()
-    print("Tallier_verify gas cost :   " ,gas_estimate2)
+    print("..............................................Test2 begin..................................................................")
+    verifygastest(2)
+    verifygastest(4)
+    verifygastest(6)
+    verifygastest(8)
+    verifygastest(10)
+    verifygastest(12)
+    verifygastest(14)
+    #verifygastest(16)
+    print("..............................................Test2 end..................................................................")
 
 
 #Third Test 
 #The time cost of Share accumulation
 def Test3():
-    share=pvss.PvssVote(pvss.random_scalar(),2)
-    share1=pvss.PvssVote(pvss.random_scalar(),2)
-
-    starttime=time.time() #time test
-    for i in range(500):  #accumulate time
-        for j in range(1,n+1):   #Share accumulation for (v,c,u) of each vote, Shares are accumulate to share1,which is the first vote share
-            share1["c"][j]=pvss.add(share1["c"][j],share["c"][j]) #accumulate c
-            share1["v"][j]=pvss.add(share1["v"][j],share["v"][j]) #accumulate v
-        share1["U"]=pvss.add(share1["U"],share["U"]) #accumulate U
-    print("Accumulate 500times  cost: ",time.time()- starttime)  #time test
+    print("..............................................Test3 begin..................................................................")
+    Accumulatetest(100,10) #(times,n) ,where times is accumulation times and n is number of tallier
+    Accumulatetest(200,10)
+    Accumulatetest(300,10)
+    Accumulatetest(400,10)
+    Accumulatetest(500,10)
+    print("..............................................Test3 end..................................................................")
 
 #Fourth Test 
 #The gas cost of TallyResult
 def Test4(): 
-    acc=pvss.PvssVote(pvss.random_scalar(),2)
-    dataacc=pvss.dateconvert(acc)   
-    gas_estimate=votescore = Contract.functions.VoteTally(dataacc["s1"],dataacc["s2"], pvss.recover_secret4(acc["raw"]),int(acc["U"][0]),int(acc["U"][1])).estimateGas()
-    print("VoteTally gas cost :   " ,gas_estimate)
-
+    print("..............................................Test4 begin..................................................................")
+    ReconGasTest(2)  #n is number of tallier 
+    ReconGasTest(4)
+    ReconGasTest(6)
+    ReconGasTest(8)
+    ReconGasTest(10)
+    ReconGasTest(12)
+    ReconGasTest(14)
+    ReconGasTest(16)
+    print("..............................................Test4 end..................................................................")
 
 #Fifth Test
 #The time cost of voter cast his vote 
 def Test5():
-    starttime=time.time()
-    acc=pvss.PvssVote(pvss.random_scalar(),2)
-    t1=time.time()- starttime
-    print("PVSS.Share() time cost: ",t1) 
-    test1=pvss.dateconvert(acc)    
-    starttime2=time.time()
-    Contract.functions.Dealer_verify_link(test1["v1"],test1["v2"],test1["c1"],test1["c2"],pk1,pk2).call({"from":w3.eth.accounts[0]})
-    t2=time.time()- starttime
-    print("PVSS.Verify() time cost: ",t2) 
-    print("The voter finish vote all time cost: ",(t1+t2)) 
-
+    print("..............................................Test5 begin..................................................................")
+    VoterTimeTest(2)  #VoterTimeTest(n) for voter invoke function to cast his vote ,where n is number of tallier
+    VoterTimeTest(4)
+    VoterTimeTest(6)
+    VoterTimeTest(8)
+    VoterTimeTest(10)
+    VoterTimeTest(12)
+    VoterTimeTest(14)
+    VoterTimeTest(16)
+    print("..............................................Test5 end..................................................................")
 
 #system test
-print("Test begin..................................................................")
+print("..............................................All Test begin..................................................................")
 Test1()
 Test2()
 Test3()
 Test4()
 Test5()
-print("Test finish.................................................................")
+print("..............................................All Test finish.................................................................")
