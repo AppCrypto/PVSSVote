@@ -144,7 +144,8 @@ def IncentiveVote():
     # Tallier (1,5) verifies the accumulated shares and recovers the voting results
     print("............................................Reward phase...........................................")
     Reward()   
-    
+    # When the vote results are published on Ethereum, smart contract automatically invokes Reward to reward the DAO
+    # members who participate in this vote with f ee deposited by initiator
     
     print("The vote task finished")
 
