@@ -9,7 +9,7 @@ contract IncentiveVote
 {
 	// p = p(u) = 36u^4 + 36u^3 + 24u^2 + 6u + 1
     uint256 constant FIELD_ORDER = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47;
-
+	uint256 modp = 21888242871839275222246405745257275088696311157297823662689037894645226208583;
     // Number of elements in the field (often called `q`)
     // n = n(u) = 36u^4 + 36u^3 + 18u^2 + 6u + 1
     uint256 constant GEN_ORDER = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001;
@@ -379,7 +379,7 @@ contract IncentiveVote
 	public payable 
 	returns (G1Point memory r)
 	{
-		uint256 s = share;
+		//uint256 s = share;
 		G1Point memory xG = g1mul(P1(), share % N());
 		G1Point memory yG = g1mul(xG,lagrange_coefficient);
 
@@ -497,12 +497,60 @@ contract IncentiveVote
 		
     }
 
+
+
+    function bytesToUint(bytes32 b) public pure returns (uint256) {
+    	uint256 number;
+    	for (uint256 i = 0; i < b.length; i++) {
+        	number = number + uint8(b[i]) * (2**(8 * (b.length - (i + 1))));
+    	}
+    	return number;
+	}
+
+	function randomness() public view returns (uint256)		
+	{
+		uint timestamp = block.timestamp;
+    	bytes32 hash = keccak256(abi.encodePacked(timestamp));
+        uint256 random= (bytesToUint(hash)% (modp));
+    	return random ;
+	}
+
+
+	function cverify(uint256 c, uint256 d0, uint256 d1) public view returns (bool)
+	{
+		if(c!=((d0+d1)%(modp)))
+		{
+			return false;
+		}
+		return true;
+	}
+
+	function bVerify(uint256 b0x , uint256 b0y , uint256 b00x , uint256 b00y) public view returns (bool)
+	{
+		assert(b0x == b00x);
+		assert(b0y == b00y);
+		//assert(a1[0] == a11[0]);
+		//assert(a1[1] == a11[1]);
+
+		return true;
+	}
+	function aVerify(uint256 a0x1 , uint256 a0x2 , uint256 a0y1 , uint256 a0y2 , uint256 a00x1, uint256 a00x2, uint256 a00y1 , uint256 a00y2) public view returns (bool)
+	{
+		assert(a0x1 == a00x1);
+		assert(a0x2 == a00x2);
+		assert(a0y1 == a00y1);
+		assert(a0y2 == a00y2);
+		return true;
+	}
+
 	//function failed_distribute()
 
-    function show(address Task_publisher) public 
+    function show(address Task_publisher) public view
         returns (address[] memory ,address[] memory ,address[] memory)
     {
 		//Look at the array of all the addresses of the task at this point
         return ( Votetasks[Task_publisher].vote_people,  Votetasks[Task_publisher].tally_people, Votetasks[Task_publisher].deposit_people);
     }
-}
+
+	
+}	
