@@ -80,8 +80,11 @@ def TallierRegistration(begin,end):
 
 
 def VoterCastVote(begin,end):
-   
-    share1=pvss.PvssVote(pvss.random_scalar(),1)   #The first voter cast his vote   his vote value is 1 ,is changeable
+    
+    share1=pvss.PvssVote(pvss.random_scalar(),0)   #The first voter cast his vote   his vote value is 1 ,is changeable
+
+    pvss.PROOFVerify(share1["U"],share1["C0"],0,share1["s"]) #Zero-knowledge proof verification for vote value 0/1
+
     test1=pvss.dateconvert(share1)    #Data conversion for bilinear pairing on-chain
     Contract.functions.Dealer_verify_link(test1["v1"],test1["v2"],test1["c1"],test1["c2"],pk1,pk2).call({"from":w3.eth.accounts[begin]})
     #Voter invoke PVSS.Verify to the vote for n tallier  
@@ -90,6 +93,9 @@ def VoterCastVote(begin,end):
     print("NO."+str(begin)+"  address : "+str(w3.eth.accounts[begin])+"  VoteDone")
     for i in range(begin+1,end+1):
         share=pvss.PvssVote(pvss.random_scalar(),1) #The second voter cast his vote, his vote value is 2 , changeable
+
+        pvss.PROOFVerify(share["U"],share["C0"],1,share["s"]) #Zero-knowledge proof verification for vote value 0/1
+
         test1=pvss.dateconvert(share1)  #Data conversion for bilinear pairing on-chain
         Contract.functions.Dealer_verify_link(test1["v1"],test1["v2"],test1["c1"],test1["c2"],pk1,pk2).call({"from":w3.eth.accounts[i]})
         Contract.functions.votesuccess(accounts0).transact({'from': w3.eth.accounts[i]})
@@ -144,11 +150,11 @@ def IncentiveVote():
     # Tallier (1,5) verifies the accumulated shares and recovers the voting results
     print("............................................Reward phase...........................................")
     Reward()   
-    # When the vote results are published on Ethereum, smart contract automatically invokes Reward to reward the DAO
-    # members who participate in this vote with f ee deposited by initiator
+    
     
     print("The vote task finished")
 
 print("............................................vote begin.............................................")
 IncentiveVote()
+
 print(".............................................vote done.............................................")
