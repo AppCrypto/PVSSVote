@@ -1,3 +1,8 @@
+from web3 import Web3
+w3 = Web3(Web3.HTTPProvider('http://127.0.0.1:7545'))
+from solcx import compile_standard,install_solc
+install_solc("0.8.0")
+import json  #to save the output in a JSON file
 import random
 import secrets
 import sympy # consider removing this dependency, only needed for mod_inverse
@@ -14,8 +19,51 @@ from typing import Tuple, Dict, List, Iterable, Union
 global pk,sk,n,t
 sk=[0]
 pk=[0]  
-n=10    #PVSS Total distribution 
+n=10   #PVSS Total distribution 
 t=5    #PVSS threshold value
+
+with open("contracts/IncentiveVote.sol", "r") as file:
+    contact_list_file = file.read()
+
+compiled_sol = compile_standard(
+    {
+        "language": "Solidity",
+        "sources": {"IncentiveVote.sol": {"content": contact_list_file}},
+        "settings": {
+            "outputSelection": {
+                "*": {
+                     "*": ["abi", "metadata", "evm.bytecode", "evm.bytecode.sourceMap"] # output needed to interact with and deploy contract 
+                }
+            }
+        },
+    },
+    solc_version="0.8.0",
+)
+
+#print(compiled_sol)
+with open("compiled_code.json", "w") as file:
+    json.dump(compiled_sol, file)
+# get bytecode
+bytecode = compiled_sol["contracts"]["IncentiveVote.sol"]["IncentiveVote"]["evm"]["bytecode"]["object"]
+# get abi
+abi = json.loads(compiled_sol["contracts"]["IncentiveVote.sol"]["IncentiveVote"]["metadata"])["output"]["abi"]
+# Create the contract in Python
+contract = w3.eth.contract(abi=abi, bytecode=bytecode)
+
+
+
+chain_id = 5777
+accounts0 = w3.eth.accounts[0]
+transaction_hash = contract.constructor().transact({'from': accounts0})
+# 等待合约部署完成
+transaction_receipt = w3.eth.wait_for_transaction_receipt(transaction_hash)
+# 获取部署后的合约地址
+contract_address = transaction_receipt['contractAddress']
+#print("合约已部署，地址：", contract_address)
+
+Contract = w3.eth.contract(address=contract_address, abi=abi)
+
+
 
 def random_scalar() -> int: #Generate random numbers
     """ Returns a random exponent for the BN128 curve, i.e. a random element from Zq.
@@ -89,7 +137,8 @@ def PvssVote(secret:int,vote:int):  # voter invoke to generating voting data (v,
     c=[0]
     v.extend([multiply(G2,PVSSshare[i]) for i in range(1,n+1)])  #v_i=g2^s_i 
     c.extend([multiply(pk[i],PVSSshare[i]) for i in range(1,n+1)]) #c_i=pk_i^s_i
-    res={"v":v,"c":c,"U":U,"raw":PVSSshare}
+    C0=multiply(G2,(secret)) 
+    res={"v":v,"c":c,"U":U,"raw":PVSSshare,"C0":C0,"s":secret}
     return res 
 
 
@@ -157,4 +206,86 @@ def Tallying(num):     # Compare the result with the pre-processed result and fi
         if (str(result)==str(Votealldate[i])):
             print("result:  "+str(i)+"   votes")
 
+def PROOFVerify(U,C0,vote,s):
+
+    def SmartcontractAsVerifier(a0,a1,b0,b1,d0,r0,d1,r1,c):
+        a00=add(multiply(G2,r0),multiply(C0,d0))
+        a11=add(multiply(G2,r1),multiply(C0,d1))
+
+        b00=add(multiply(G1,r0),multiply(U,d0))
+        b11=add(multiply(G1,r1),multiply(add(U,neg(G1)),d1))
+
+        Contract.functions.cverify(c,d0,d1).call({'from': w3.eth.accounts[0]})
+        Contract.functions.bVerify(int(b0[0]),int(b0[1]),int(b00[0]),int(b00[1])).call({'from': w3.eth.accounts[0]})
+        Contract.functions.bVerify(int(b1[0]),int(b1[1]),int(b11[0]),int(b11[1])).call({'from': w3.eth.accounts[0]})        
+        ac0=[]
+        ac0.append(int(re.findall("\d+",str(a0[0]))[0]))
+        ac0.append(int(re.findall("\d+",str(a0[0]))[1]))
+        ac0.append(int(re.findall("\d+",str(a0[1]))[0]))
+        ac0.append(int(re.findall("\d+",str(a0[1]))[1]))
+        
+        ac1=[]
+        ac1.append(int(re.findall("\d+",str(a00[0]))[0]))
+        ac1.append(int(re.findall("\d+",str(a00[0]))[1]))
+        ac1.append(int(re.findall("\d+",str(a00[1]))[0]))
+        ac1.append(int(re.findall("\d+",str(a00[1]))[1]))
+        Contract.functions.aVerify(ac0[0],ac0[1],ac0[2],ac0[3],ac1[0],ac1[1],ac1[2],ac1[3]).call({'from': w3.eth.accounts[0]})
+
+        ac0=[]
+        ac0.append(int(re.findall("\d+",str(a1[0]))[0]))
+        ac0.append(int(re.findall("\d+",str(a1[0]))[1]))
+        ac0.append(int(re.findall("\d+",str(a1[1]))[0]))
+        ac0.append(int(re.findall("\d+",str(a1[1]))[1]))
+        
+        ac1=[]
+        ac1.append(int(re.findall("\d+",str(a11[0]))[0]))
+        ac1.append(int(re.findall("\d+",str(a11[0]))[1]))
+        ac1.append(int(re.findall("\d+",str(a11[1]))[0]))
+        ac1.append(int(re.findall("\d+",str(a11[1]))[1]))
+        Contract.functions.aVerify(ac0[0],ac0[1],ac0[2],ac0[3],ac1[0],ac1[1],ac1[2],ac1[3]).call({'from': w3.eth.accounts[0]})
+
+    w=random_scalar()
+    #Step1  
+    if(vote==1):
+        
+        a1=multiply(G2,w)
+        b1=multiply(G1,w)
+
+        r0=random_scalar()    # r1 =r_v, r2=r_1-v   
+        d0=random_scalar()
+
+        a0=add(multiply(G2,r0),multiply(C0,d0))
+        b0=add(multiply(G1,r0),multiply(U,d0))
+    elif(vote==0):
+        #w=random_scalar()
+        a0=multiply(G2,w)
+        b0=multiply(G1,w)
+
+        r1=random_scalar()    # r1 =r_v, r2=r_1-v   
+        d1=random_scalar()    # d1=d_r, d2=d_1-v     
+
+        a1=add(multiply(G2,r1),multiply(C0,d1))
+        b1=add(multiply(G1,r1),multiply(add(U,neg(G1)),d1))
+        
+    else:
+        print("vote value error and quit")
+        sys.exit()
+
+    #Step2  verifier send challenge c
+    c=Contract.functions.randomness().call({'from': w3.eth.accounts[0]})
+    #c=random_scalar()
+
+    #Step3 
+    if(vote==0):
+        d0=(c-d1+CURVE_ORDER)% CURVE_ORDER
+        r0=((w-s*d0)+CURVE_ORDER)% CURVE_ORDER
+    elif(vote==1):
+        d1=(c-d0+CURVE_ORDER)% CURVE_ORDER
+        r1=((w-s*d1)+CURVE_ORDER)% CURVE_ORDER
+    else:
+        print("error")
+        sys.exit()
+
+    #Step4
+    SmartcontractAsVerifier(a0,a1,b0,b1,d0,r0,d1,r1,c)
 
