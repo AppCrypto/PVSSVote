@@ -507,7 +507,7 @@ contract IncentiveVote
     	return number;
 	}
 
-	function randomness() public view returns (uint256)		
+    function randomness() public view returns (uint256)		
 	{
 		uint timestamp = block.timestamp;
     	bytes32 hash = keccak256(abi.encodePacked(timestamp));
@@ -516,7 +516,7 @@ contract IncentiveVote
 	}
 
 
-	function cverify(uint256 c, uint256 d0, uint256 d1) public view returns (bool)
+    function cverify(uint256 c, uint256 d0, uint256 d1) public view returns (bool)
 	{
 		if(c!=((d0+d1)%(modp)))
 		{
@@ -525,7 +525,7 @@ contract IncentiveVote
 		return true;
 	}
 
-	function bVerify(uint256 b0x , uint256 b0y , uint256 b00x , uint256 b00y) public view returns (bool)
+    function bVerify(uint256 b0x , uint256 b0y , uint256 b00x , uint256 b00y) public view returns (bool)
 	{
 		assert(b0x == b00x);
 		assert(b0y == b00y);
@@ -534,7 +534,7 @@ contract IncentiveVote
 
 		return true;
 	}
-	function aVerify(uint256 a0x1 , uint256 a0x2 , uint256 a0y1 , uint256 a0y2 , uint256 a00x1, uint256 a00x2, uint256 a00y1 , uint256 a00y2) public view returns (bool)
+    function aVerify(uint256 a0x1 , uint256 a0x2 , uint256 a0y1 , uint256 a0y2 , uint256 a00x1, uint256 a00x2, uint256 a00y1 , uint256 a00y2) public view returns (bool)
 	{
 		assert(a0x1 == a00x1);
 		assert(a0x2 == a00x2);
